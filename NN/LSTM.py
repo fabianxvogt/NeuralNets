@@ -1,8 +1,5 @@
 import numpy as np
 from time import time
-import aux_funcs as aux
-from utils.dataset import dataset
-import os
 
 class LSTM:
     def __init__(self, hidden_dim, dataset) -> None:

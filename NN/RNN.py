@@ -1,6 +1,4 @@
-import os
 import numpy as np
-from utils.dataset import dataset
 
 class RNN:
     def __init__(self, hidden_size, dataset):
