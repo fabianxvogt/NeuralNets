@@ -6,6 +6,7 @@ class classification_dataset(dataset):
     def __init__(self, classified_text_data) -> None:
         full_text = ""
         self.class2ix = {}
+        self.ix2class = {}
         self.class_data = {}
 
         self.train_data = {}
@@ -14,16 +15,20 @@ class classification_dataset(dataset):
         # define class mapping and concat all texts for the base class
         i = 0
         for class_key in classified_text_data:
+            # Set Output Mappings
             self.class2ix[class_key] = i
+            self.ix2class[i] = class_key
+
             class_text = classified_text_data[class_key]
             full_text+= class_text
             self.class_data[class_key] = class_text.splitlines(True)
             i += 1
-        
-        self.ix2class = {ch: i for i,ch in self.class2ix.items()}
+    
         super().__init__(full_text, 0)
+        
+        self.output_size = len(self.class2ix)
 
-    def prepare_data(self, training_ratio = 0.8):
+    def prepare_data(self, as_vectors, training_ratio = 0.8):
 
         train_data = {}
         valid_data = {}
@@ -38,7 +43,7 @@ class classification_dataset(dataset):
             encoded_names_valid = []
             name_counter = 0
             for v in values:
-                encoded_name = self.encode_seq(v)
+                encoded_name = self.encode_seq(v,as_vectors)
                 name_counter += 1
                 if name_counter > training_ratio*len(values): 
                     encoded_names_valid.append(encoded_name)
@@ -49,9 +54,9 @@ class classification_dataset(dataset):
             counter += 1
         return train_data, valid_data
 
-    def get_random_input_and_target(self, training=True):
+    def get_next_inputs_and_targets(self, as_vectors = False, training=True):
         if(len(self.train_data) == 0):
-            self.train_data, self.valid_data = self.prepare_data()
+            self.train_data, self.valid_data = self.prepare_data(as_vectors)
 
         if training:
             dataset = self.train_data
@@ -65,6 +70,6 @@ class classification_dataset(dataset):
 
         enc = np.zeros(len(dataset), dtype=int)
         enc[class_ix] = 1
-        return dataset[class_ix][element_ix], enc
+        return dataset[class_ix][element_ix], [enc]
 
 

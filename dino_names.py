@@ -22,17 +22,27 @@ def __main__():
     input_file += ".txt"
     text_data = open(input_file, 'r').read() 
     dinos = dataset(text_data, seq_length)
-
+    dinos.shuffle()
+        
+    TRAIN = True
     USE_LSTM = False
 
-    if USE_LSTM:
-        dinos.encode_data(False)
-        lstm = LSTM(hidden_size, dinos)
-        lstm.optimize(learning_rate, model_name, weights_dir)
+    nn = None
 
+    if USE_LSTM:
+        model_name += "_LSTM"
+        dinos.prepare_data(False)
+        nn = LSTM(hidden_size, dinos, model_name, weights_dir)
     else:
-        dinos.encode_data(True)
-        rnn = RNN(hidden_size, dinos)
-        rnn.optimize(learning_rate, model_name, weights_dir)
+        model_name += "_RNN"
+        dinos.prepare_data(True)
+        nn = RNN(hidden_size, dinos, model_name, weights_dir)
+    EOS_char = '\n'
+    if TRAIN:
+        nn.optimize(learning_rate, 10000, 0.001)
+    else:
+        # Generate a few names starting with "L"
+        for i in range(100): 
+            nn.sample(dinos.encode_seq("L", True)[0], 20, EOS_char)
 
 __main__()

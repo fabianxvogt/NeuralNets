@@ -1,25 +1,100 @@
+from abc import abstractmethod
+import py_compile
+
+
 import numpy as np
 
 class RNN:
-    def __init__(self, hidden_size, dataset):
-        # Dimensions & learning rate
-        self.vocab_size = dataset.vocab_size
-        self.hidden_size = hidden_size
+    def __init__(self, hidden_size, dataset, model_name, weights_dir):
         self.dataset = dataset
+        self.hidden_size = hidden_size
+        self.model_name = model_name
+        self.weights_dir = weights_dir
 
+        self.INPUTS_AS_VECTORS = True
         # Weights and biases
-        self.Wxh = np.random.randn(hidden_size, self.vocab_size) * 0.01  # input to hidden
-        self.Whh = np.random.randn(hidden_size, hidden_size) * 0.01  # input to hidden
-        self.Why = np.random.randn(self.vocab_size, hidden_size) * 0.01  # input to hidden
-        self.bh = np.zeros((hidden_size, 1))
-        self.by = np.zeros((self.vocab_size, 1))
+        (self.Wxh, self.Whh, self.Why, self.bh, self.by) = self.init_weights()
+
+        # Hidden state
+        self.hidden_state = self.init_hidden_state()
+        
+        # Loss
+        self.smooth_loss = -np.log(1.0 / self.dataset.input_size) * self.dataset.seq_length  # loss at iteration 0
+
+        # Used for Adagrad
+        self.mWxh, self.mWhh, self.mWhy = (
+            np.zeros_like(self.Wxh),
+            np.zeros_like(self.Whh),
+            np.zeros_like(self.Why),
+        )
+        self.mbh, self.mby = np.zeros_like(self.bh), np.zeros_like(
+            self.by
+        )  #
+        self.load_model(model_name, weights_dir)
+
+    # Initialize the weights
+    def init_weights(self):
+        
+        return (np.random.randn(self.hidden_size, self.dataset.input_size) * 0.01,  # input to hidden
+                np.random.randn(self.hidden_size, self.hidden_size) * 0.01,  # input to hidden
+                np.random.randn(self.dataset.output_size, self.hidden_size) * 0.01,  # input to hidden
+                np.zeros((self.hidden_size, 1)),
+                np.zeros((self.dataset.output_size, 1)),
+        )
+    
+    def init_hidden_state(self):
+        return np.zeros((self.hidden_size, 1))
+
+    def load_model(self, filename, weights_dir):
+        # Fixing the path
+        if weights_dir[-1] != '/':
+            weights_dir += '/'
+        print ('(Info) Loading weights for "{}"'.format(filename))
+        try:
+            self.Wxh = np.load(weights_dir + filename + '_'+'_Wxh'+ '.npy')
+            self.Whh = np.load(weights_dir + filename + '_'+'_Whh'+ '.npy')
+            self.bh  = np.load(weights_dir + filename + '_'+'_bh' + '.npy')
+            self.Why = np.load(weights_dir + filename + '_'+'_Why'+ '.npy')
+            self.by  = np.load(weights_dir + filename + '_'+'_by' +'.npy')
+        except:
+            print('(Error) Can"t find the saved weights!')
+            return
+        print ('(Info) Weights Loaded successfully!')
+
+    def save_model(self, filename, weights_dir):
+        
+        print ('(Info) Saving weights for "{}"'.format(filename))
+        np.save(weights_dir + filename + '_'+'_Wxh'    + '.npy', self.Wxh)
+        np.save(weights_dir + filename + '_'+'_Whh'    + '.npy', self.Whh)
+        np.save(weights_dir + filename + '_'+'_bh'     + '.npy', self.bh)
+        np.save(weights_dir + filename + '_'+'_Why'    + '.npy', self.Why)
+        np.save(weights_dir + filename + '_'+'_by'     + '.npy', self.by)
+        print ('(Info) Weights saved!')
+
+    def gradient_descent(self, dWxh, dWhh, dWhy, dbh, dby, learning_rate):
+        for dparam in [dWxh, dWhh, dWhy, dbh, dby]:
+            np.clip(dparam, -5, 5, out=dparam) 
+
+        # Adagrad gradient descent 
+        for param, dparam, mem in zip(
+            [self.Wxh, self.Whh, self.Why, self.bh, self.by],
+            [dWxh, dWhh, dWhy, dbh, dby],
+            [self.mWxh, self.mWhh, self.mWhy, self.mbh, self.mby],
+        ):
+            mem += dparam * dparam
+            param += -learning_rate * dparam / np.sqrt(mem + 1e-8)
+        
+    def compute_loss(self, targets, ps):
+        loss = 0
+        for i in range(len(ps)):
+            loss += -np.log(ps[i][targets[i][0], 0])
+        return loss
 
     # forward pass
     def forward(self, inputs, targets, hs, ys, ps):
         loss = 0
 
         for t in range(len(inputs)):
-            
             hs[t] = np.tanh(
                 np.dot(self.Wxh, inputs[t]) + np.dot(self.Whh, hs[t - 1]) + self.bh
             )  # hidden state
@@ -29,9 +104,7 @@ class RNN:
             ps[t] = np.exp(ys[t]) / np.sum(
                 np.exp(ys[t])
             )  # probabilities for next chars
-            loss += -np.log(ps[t][targets[t][0], 0])  # softmax (cross-entropy loss)
-
-        return loss, hs, ys, ps
+        return hs, ys, ps
 
     # backward pass
     def backward(self, inputs, targets, hs, ps):
@@ -47,7 +120,10 @@ class RNN:
             # output probabilities
             dy = np.copy(ps[t])
             # derive our first gradient
-            dy[targets[t]] -= 1  # backprop into y
+            if len(targets) == 1: # if this RNN is used for classifications, targets will have length = 1 (same target for all inputs)
+                dy[targets[0]] -= 1  # backprop into y
+            else:
+                dy[targets[t]] -= 1  # backprop into y
             dWhy += np.dot(dy, hs[t].T)
             # derivative of output bias
             dby += dy
@@ -65,116 +141,69 @@ class RNN:
         return dWxh, dWhh, dWhy, dbh, dby
 
     # loss function 
-    def lossFun(self, inputs, targets, hprev):
+    def loss_fun(self, inputs, targets, hprev):
         hs, ys, ps = {}, {}, {} # Empty dicts
         hs[-1] = np.copy(hprev)
 
         targets_index = list(np.argmax(targets, axis=1))
         # Do forward pass and get the loss
-        loss, hs, ys, ps = self.forward(inputs, targets_index, hs, ys, ps)
+        hs, ys, ps = self.forward(inputs, targets_index, hs, ys, ps)
 
+        loss = self.compute_loss(targets_index, ps)
         # backward pass: compute gradients going backwards
         dWxh, dWhh, dWhy, dbh, dby = self.backward(inputs, targets_index, hs, ps)
 
-        return loss, dWxh, dWhh, dWhy, dbh, dby, hs[len(inputs) - 1]
+        self.smooth_loss = self.smooth_loss * 0.999 + loss * 0.001
 
-    def load_model(self, filename, weights_dir):
-        # Fixing the path
-        if weights_dir[-1] != '/':
-            weights_dir += '/'
-        print ('(Info) Loading weights for "{}"'.format(filename))
-        try:
-            self.Wxh = np.load(weights_dir + filename + '_rnn_Wxh' + '.npy')
-            self.Whh = np.load(weights_dir + filename + '_rnn_Whh' + '.npy')
-            self.bh = np.load( weights_dir + filename +  '_rnn_bh' + '.npy')
-            self.Why = np.load(weights_dir + filename +'_rnn_Why'  + '.npy')
-            self.by = np.load( weights_dir + filename + '_rnn_by'  +'.npy')
-        except:
-            print('(Error) Can"t find the saved weights!')
-            return
-        print ('(Info) Weights Loaded successfully!')
+        return dWxh, dWhh, dWhy, dbh, dby, hs[len(inputs) - 1]
+    
+    def get_prediction(self, input):
+        self.hidden_state = np.tanh(np.dot(self.Wxh, input) + np.dot(self.Whh, self.hidden_state) + self.bh)
+        # compute output (unnormalised)
+        y = np.dot(self.Why, self.hidden_state) + self.by
+        ## probabilities for next chars
+        p = np.exp(y) / np.sum(np.exp(y))
+        # pick one with the highest probability
+        return np.random.choice(range(self.dataset.output_size), p=p.ravel())
+            
 
-    def save_weights(self, filename, weights_dir):
+    def sample(self, input, n = 10000, EOS_char = None):
+        txt = self.dataset.ix2ch[np.argmax(input)]
         
-        print ('(Info) Saving weights for "{}"'.format(filename))
-        np.save(weights_dir + filename + '_rnn_Wxh'    + '.npy', self.Wxh)
-        np.save(weights_dir + filename + '_rnn_Whh'    + '.npy', self.Whh)
-        np.save(weights_dir + filename + '_rnn_bh'     + '.npy', self.bh)
-        np.save(weights_dir + filename + '_rnn_Why'    + '.npy', self.Why)
-        np.save(weights_dir + filename + '_rnn_by'     + '.npy', self.by)
-        print ('(Info) Weights saved!')
-
-    # prediction, one full forward pass
-    def sample(self, h, seed_ix, n):
-        # create vector
-        x = np.zeros((self.vocab_size, 1))
-        # customize it for our seed char
-        x[seed_ix] = 1
-        # list to store generated chars
-        ixes = []
         for t in range(n):
-            h = np.tanh(np.dot(self.Wxh, x) + np.dot(self.Whh, h) + self.bh)
-            # compute output (unnormalised)
-            y = np.dot(self.Why, h) + self.by
-            ## probabilities for next chars
-            p = np.exp(y) / np.sum(np.exp(y))
-            # pick one with the highest probability
-            ix = np.random.choice(range(self.vocab_size), p=p.ravel())
-            x = np.zeros((self.vocab_size, 1))
-            x[ix] = 1
-            ixes.append(ix)
+            ix = self.get_prediction(input)
+            if not EOS_char is None:
+                if (self.dataset.ix2ch[ix] == EOS_char):
+                    break
+            ch = self.dataset.ix2ch[ix]
+            txt += ch
+            # Use as new input
+            input = self.dataset.encode_seq(ch, self.INPUTS_AS_VECTORS)[0]
+        return txt
 
-        txt = "".join(self.dataset.ix2ch[ix] for ix in ixes)
-        print("----\n %s \n----" % (txt,))
+    def print_sample(self, inputs, targets, iteration, sample_steps):
+        new_text = self.sample(inputs[0])
+        print("iter %d, loss: %f" % (iteration, self.smooth_loss))  # print progress     
+        print(new_text)
 
-    def optimize(self, learning_rate, model_name, weights_dir):
-        
-        self.load_model(model_name, weights_dir)
+    def after_iteration(self, iteration):
+        return
 
-        n, p = 0, 0
-        mWxh, mWhh, mWhy = (
-            np.zeros_like(self.Wxh),
-            np.zeros_like(self.Whh),
-            np.zeros_like(self.Why),
-        )
-        mbh, mby = np.zeros_like(self.bh), np.zeros_like(
-            self.by
-        )  # memory variables for Adagrad
-        smooth_loss = -np.log(1.0 / self.vocab_size) * self.dataset.seq_length  # loss at iteration 0
+    def optimize(self, learning_rate, n, sample_rate):       
 
-        input_counter = 0
-
-        while n <= 1000 * 100:
-            if input_counter >= len(self.dataset.inputs) or n == 0:
-                input_counter = 0
-                hprev = np.zeros((self.hidden_size, 1))  # reset RNN memory
-            inputs = self.dataset.inputs[input_counter]
-            targets = self.dataset.targets[input_counter]
-
-            loss, dWxh, dWhh, dWhy, dbh, dby, hprev = self.lossFun(
-                inputs, targets, hprev
+        sample_steps = 1/sample_rate
+        for i in range(n):
+            inputs, targets = self.dataset.get_next_inputs_and_targets(self.INPUTS_AS_VECTORS)
+            
+            dWxh, dWhh, dWhy, dbh, dby, self.hidden_state = self.loss_fun(
+                inputs, targets, self.hidden_state
             )
-            smooth_loss = smooth_loss * 0.999 + loss * 0.001
 
             # Sample
-            if n % 1000 == 0:
-                print("iter %d, loss: %f" % (n, smooth_loss))  # print progress
-                self.sample(hprev, inputs[0], 200)
+            if i % sample_steps == 0:
+                self.print_sample(inputs, targets, i, sample_steps)
                 
-                self.save_weights(model_name, weights_dir)
+                self.save_model(self.model_name, self.weights_dir)
 
-            # Adagrad gradient descent
-            for param, dparam, mem in zip(
-                [self.Wxh, self.Whh, self.Why, self.bh, self.by],
-                [dWxh, dWhh, dWhy, dbh, dby],
-                [mWxh, mWhh, mWhy, mbh, mby],
-            ):
-                mem += dparam * dparam
-                param += -learning_rate * dparam / np.sqrt(mem + 1e-8)  # adagrad update
-
-            p += self.dataset.seq_length  # move data pointer
-            n += 1  # iteration counter
-            input_counter += 1
-
-
-
+            self.gradient_descent(dWxh, dWhh, dWhy, dbh, dby, learning_rate)
+            self.after_iteration(i)

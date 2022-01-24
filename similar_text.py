@@ -12,7 +12,7 @@ def __main__():
     # Model params
     hidden_size = 250
     seq_length = 25
-    learning_rate = 1e-1
+    learning_rate = 1e-2
     # Dataset read
     model_name = "shakespeare"
 
@@ -23,16 +23,18 @@ def __main__():
     text_data = open(input_file, 'r').read() 
     shakespeare = dataset(text_data, seq_length)
 
-    USE_LSTM = True
+
+    USE_LSTM = False
 
     if USE_LSTM:
-        shakespeare.encode_data(False)
-        lstm = LSTM(hidden_size, shakespeare)
-        lstm.optimize(learning_rate, model_name, weights_dir)
-
+        model_name += "_LSTM"
+        shakespeare.prepare_data(False)
+        nn = LSTM(hidden_size, shakespeare, model_name, weights_dir)
     else:
-        shakespeare.encode_data(True)
-        rnn = RNN(hidden_size, shakespeare)
-        rnn.optimize(learning_rate, model_name, weights_dir)
+        model_name += "_RNN"
+        shakespeare.prepare_data(True)
+        nn = RNN(hidden_size, shakespeare, model_name, weights_dir)
+    
+    nn.optimize(learning_rate, 100000000, 0.01)
 
 __main__()
