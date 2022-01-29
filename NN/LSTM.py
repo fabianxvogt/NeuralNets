@@ -33,13 +33,13 @@ class LSTM(RNN):
     # LSTM functions
     def lstm_step_forward(self, x, prev_h, prev_c, Wx, Wh, b):
         _, H = prev_h.shape
-        a = prev_h.dot(Wh) + x.dot(Wx) + b      # (1, 4*hidden_dim)
+        a = prev_h.dot(Wh) + x.dot(Wx) + b     
         i = self.sigmoid(a[:, 0:H])
         f = self.sigmoid(a[:, H:2*H])
         o = self.sigmoid(a[:, 2*H:3*H])
-        g = np.tanh(a[:, 3*H:4*H])              # (1, hidden_dim)
-        next_c = f * prev_c + i * g             # (1, hidden_dim)
-        next_h = o * (np.tanh(next_c))          # (1, hidden_dim)
+        g = np.tanh(a[:, 3*H:4*H])           
+        next_c = f * prev_c + i * g             
+        next_h = o * (np.tanh(next_c))          
         cache = x, prev_h, prev_c, Wx, Wh, b, a, i, f, o, g, next_c
         return next_h, next_c, cache
 

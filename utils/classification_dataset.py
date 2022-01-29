@@ -1,3 +1,4 @@
+from random import Random
 import numpy as np
 from utils.dataset import dataset
 
@@ -32,26 +33,27 @@ class classification_dataset(dataset):
 
         train_data = {}
         valid_data = {}
-        counter = 0
+        class_ix = 0
         for cls in self.class_data:
             values = self.class_data[cls]
             
-            #np.random.shuffle(names)     # Das war ein Versuch, aber die Namen sollten hier noch nicht 
-            # geshuffelt werden, sonst sind die Trainings- und Validierungsdaten bei jeden Start verschieden
+            # Datensätze immer gleich shuffeln
+            Random(1).shuffle(values)
 
             encoded_names_train = []
             encoded_names_valid = []
             name_counter = 0
+            training_size = training_ratio*len(values)
             for v in values:
                 encoded_name = self.encode_seq(v,as_vectors)
                 name_counter += 1
-                if name_counter > training_ratio*len(values): 
+                if name_counter > training_size: 
                     encoded_names_valid.append(encoded_name)
                 else:
                     encoded_names_train.append(encoded_name)
-            train_data[counter] = encoded_names_train
-            valid_data[counter] = encoded_names_valid
-            counter += 1
+            train_data[class_ix] = encoded_names_train
+            valid_data[class_ix] = encoded_names_valid
+            class_ix+=1
         return train_data, valid_data
 
     def get_next_inputs_and_targets(self, as_vectors = False, training=True):

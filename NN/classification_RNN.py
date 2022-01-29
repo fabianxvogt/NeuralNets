@@ -1,5 +1,7 @@
+import collections
 import numpy as np
 from NN.RNN import RNN
+from pandas import DataFrame
 from utils.plots import plot_accuracy_and_loss
 
 class classification_RNN(RNN):
@@ -9,14 +11,26 @@ class classification_RNN(RNN):
         self.accuracy_over_time = []
         self.loss_over_time = []
         self.epochs = []
+        
+        # Confusion matrix init
+        self.confusion = collections.defaultdict(dict)
+        for target in self.dataset.class_data:
+            for pred in self.dataset.class_data:
+                self.confusion[target][pred] = 0
+
+    def set_and_print_confusion(self, target, pred):
+        self.confusion[target][pred] +=1
+        df = DataFrame(self.confusion).T
+        df.fillna(0, inplace=True)
+        print("Y (vertical) = Targets; X (horizontal) = Predictions")
+        print(df)
 
     def compute_loss(self, target, ps):
         loss = 0
         for i in range(len(ps)):
             loss += -np.log(ps[i][target[0], 0])
         return loss
-
-    # Eine Vorhersage samplen
+    
     def sample(self, inputs):
         self.hidden_state = self.init_hidden_state()
         # Alle inputs durchgehen
@@ -45,9 +59,11 @@ class classification_RNN(RNN):
         self.loss_over_time.append(self.smooth_loss)
         self.epochs.append(iteration)
 
+        self.set_and_print_confusion(target, pred)
+
     
     def after_iteration(self, iteration):
-        if iteration % 200000 != 0 or iteration == 0:
+        if iteration % 10000000 != 0 or iteration == 0:
             return
         plot_accuracy_and_loss(
             self.epochs,

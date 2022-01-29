@@ -31,10 +31,10 @@ def main():
     # Dataset erstellen
     ds_names = classification_dataset(names_data_txt)
 
-    USE_LSTM = False
-    TRAINING = True
+    USE_LSTM = 1
+    TRAINING = 0
     # Classification Neural Net erzeugen
-    if USE_LSTM == True:
+    if USE_LSTM:
         model_name += "_LSTM"
         nn = classification_LSTM(hidden_size, ds_names, model_name, weights_dir)
     else:
@@ -44,7 +44,7 @@ def main():
 
     if (TRAINING):
         # Trainieren
-        nn.optimize(learning_rate,1000000,0.001)
+        nn.optimize(learning_rate,20000000,0.01)
         
     else:
         print(nn.sample(ds_names.encode_seq("Fabian",not USE_LSTM)))
@@ -53,24 +53,12 @@ def main():
         # Validieren
         hits = 0
         acc_over_time = []
-        for i in range(1000):
+        for i in range(20000):
             inputs, target = ds_names.get_next_inputs_and_targets(not USE_LSTM, False) # False = Kein Training
-            pred = nn.sample(inputs)
-            name = ""
-            for ix in inputs:
-                name += ds_names.ix2ch[np.argmax(ix)]
-            target_str = ds_names.ix2class[np.argmax(target)]
-            print('Name: ' + name)
-            print('Actual country: ' + target_str)
-            print('Prediction: ' + pred)
-            
-            if target_str == pred:
-                hits += 1
-            acc = hits/(i+1)
-            acc_over_time.append(acc)
-            print('Accuracy: ' + str(acc) )
+            nn.print_sample(inputs, target, i, 1)
         
-        plt.plot(acc_over_time)
+        plt.plot(nn.accuracy_over_time)
+        plt.grid()
         plt.show()
 
 main()

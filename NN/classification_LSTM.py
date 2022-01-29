@@ -1,6 +1,8 @@
+import collections
 import numpy as np
 from time import time
 
+from pandas import DataFrame
 from NN.LSTM import LSTM
 from utils.plots import plot_accuracy_and_loss
 
@@ -11,6 +13,12 @@ class classification_LSTM(LSTM):
         self.accuracy_over_time = []
         self.loss_over_time = []
         self.epochs = []
+
+        # Confusion matrix init
+        self.confusion = collections.defaultdict(dict)
+        for target in self.dataset.class_data:
+            for pred in self.dataset.class_data:
+                self.confusion[target][pred] = 0
 
     def sample(self, seed):
         self.hidden_state = self.init_hidden_state()
@@ -36,15 +44,26 @@ class classification_LSTM(LSTM):
         print('Prediction: '+ pred)
         if target == pred:
             self.hits += 1
-        div = it/sample_steps +1
+
+        div = it/sample_steps + 1
         acc = self.hits/div
         print('Accuracy: ' + str(acc) )
         self.accuracy_over_time.append(acc)
         self.loss_over_time.append(self.smooth_loss[-1])
         self.epochs.append(it)
 
+        self.set_and_print_confusion(target, pred)
+
+    def set_and_print_confusion(self, target, pred):
+        self.confusion[target][pred] +=1
+        df = DataFrame(self.confusion).T
+        df.fillna(0, inplace=True)
+        print("Y (vertical) = Targets; X (horizontal) = Predictions")
+        print(df)
+
+
     def after_iteration(self, iteration):
-        if iteration % 200000 != 0 or iteration == 0:
+        if iteration % 20000000 != 0 or iteration == 0:
             return
         plot_accuracy_and_loss(
             self.epochs,

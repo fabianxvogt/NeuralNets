@@ -119,25 +119,25 @@ class RNN:
         for t in reversed(range(len(inputs))):
             # output probabilities
             dy = np.copy(ps[t])
-            # derive our first gradient
-            if len(targets) == 1: # if this RNN is used for classifications, targets will have length = 1 (same target for all inputs)
+            # derive first gradient
+            if len(targets) == 1: # if RNN is used for classifications, targets will have length = 1 (same target for all inputs)
                 dy[targets[0]] -= 1  # backprop into y
             else:
                 dy[targets[t]] -= 1  # backprop into y
             dWhy += np.dot(dy, hs[t].T)
             # derivative of output bias
             dby += dy
-            # backpropagate!
-            dh = np.dot(self.Why.T, dy) + dhnext  # backprop into h
-            dhraw = (1 - hs[t] * hs[t]) * dh  # backprop through tanh nonlinearity
-            dbh += dhraw  # derivative of hidden bias
-            dWxh += np.dot(dhraw, inputs[t].T)  # derivative of input to hidden layer weight
+            # backpropagate
+            dh = np.dot(self.Why.T, dy) + dhnext 
+            dhraw = (1 - hs[t] * hs[t]) * dh 
+            dbh += dhraw  
+            dWxh += np.dot(dhraw, inputs[t].T)  
             dWhh += np.dot(
                 dhraw, hs[t - 1].T
-            )  # derivative of hidden layer to hidden layer weight
+            )  
             dhnext = np.dot(self.Whh.T, dhraw)
         for dparam in [dWxh, dWhh, dWhy, dbh, dby]:
-            np.clip(dparam, -5, 5, out=dparam)  # clip to mitigate exploding gradients
+            np.clip(dparam, -5, 5, out=dparam)  # clip to stop gradients from exploding
         return dWxh, dWhh, dWhy, dbh, dby
 
     # loss function 
@@ -150,7 +150,7 @@ class RNN:
         hs, ys, ps = self.forward(inputs, targets_index, hs, ys, ps)
 
         loss = self.compute_loss(targets_index, ps)
-        # backward pass: compute gradients going backwards
+        # backward pass: compute gradients while going backwards
         dWxh, dWhh, dWhy, dbh, dby = self.backward(inputs, targets_index, hs, ps)
 
         self.smooth_loss = self.smooth_loss * 0.999 + loss * 0.001
